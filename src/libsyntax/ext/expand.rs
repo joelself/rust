@@ -224,6 +224,7 @@ fn expand_mac_invoc<T, F, G>(mac: ast::Mac,
         }
         Some(rc) => match *rc {
             NormalTT(ref expandfun, exp_span, allow_internal_unstable) => {
+                let span = fld.new_span(span);
                 fld.cx.bt_push(ExpnInfo {
                         call_site: span,
                         callee: NameAndSpan {
@@ -235,16 +236,8 @@ fn expand_mac_invoc<T, F, G>(mac: ast::Mac,
                 let fm = fresh_mark();
                 let marked_before = mark_tts(&tts[..], fm);
 
-                // The span that we pass to the expanders we want to
-                // be the root of the call stack. That's the most
-                // relevant span and it's the actual invocation of
-                // the macro.
-                let mac_span = fld.cx.original_span();
-
                 let opt_parsed = {
-                    let expanded = expandfun.expand(fld.cx,
-                                                    mac_span,
-                                                    &marked_before[..]);
+                    let expanded = expandfun.expand(fld.cx, span, &marked_before);
                     parse_thunk(expanded)
                 };
                 let parsed = match opt_parsed {
@@ -372,8 +365,10 @@ fn contains_macro_use(fld: &mut MacroExpander, attrs: &[ast::Attribute]) -> bool
 pub fn expand_item_mac(it: P<ast::Item>,
                        fld: &mut MacroExpander) -> SmallVector<P<ast::Item>> {
     let (extname, path_span, tts, span, attrs, ident) = it.and_then(|it| match it.node {
-        ItemKind::Mac(codemap::Spanned { node: Mac_ { path, tts, .. }, .. }) =>
-            (path.segments[0].identifier.name, path.span, tts, it.span, it.attrs, it.ident),
+        ItemKind::Mac(codemap::Spanned { node: Mac_ { path, tts, .. }, .. }) => {
+            let span = fld.new_span(it.span);
+            (path.segments[0].identifier.name, path.span, tts, span, it.attrs, it.ident)
+        }
         _ => fld.cx.span_bug(it.span, "invalid item macro invocation")
     });
 
@@ -775,6 +770,7 @@ fn expand_pat(p: P<ast::Pat>, fld: &mut MacroExpander) -> P<ast::Pat> {
 
             Some(rc) => match *rc {
                 NormalTT(ref expander, tt_span, allow_internal_unstable) => {
+                    let span = fld.new_span(span);
                     fld.cx.bt_push(ExpnInfo {
                         call_site: span,
                         callee: NameAndSpan {
@@ -786,10 +782,7 @@ fn expand_pat(p: P<ast::Pat>, fld: &mut MacroExpander) -> P<ast::Pat> {
 
                     let fm = fresh_mark();
                     let marked_before = mark_tts(&tts[..], fm);
-                    let mac_span = fld.cx.original_span();
-                    let pat = expander.expand(fld.cx,
-                                              mac_span,
-                                              &marked_before[..]).make_pat();
+                    let pat = expander.expand(fld.cx, span, &marked_before).make_pat();
                     let expanded = match pat {
                         Some(e) => e,
                         None => {
